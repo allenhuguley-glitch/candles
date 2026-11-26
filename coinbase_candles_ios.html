@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Coin Candles Paper</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Candles">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0e11">
+<meta name="color-scheme" content="dark light">
+<style>
+/* =====================================================================
+   Coin Candles Paper - one self-contained file. No server, no libraries.
+   Live Coinbase prices (public feed) + candles + signals + PAPER trading.
+   ===================================================================== */
+:root{
+  --bg:#0b0e11; --card:#151a21; --card2:#1c232c; --line:#2a323d;
+  --text:#e8edf2; --dim:#8b97a6; --up:#2ecc71; --dn:#ff5c5c; --amber:#f5b942; --cyan:#4fd1e8; --accent:#5b8def;
+  --upbg:rgba(46,204,113,.16); --dnbg:rgba(255,92,92,.16);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f3f5f8; --card:#ffffff; --card2:#eef1f5; --line:#d6dce4;
+    --text:#14181d; --dim:#5d6877; --up:#12a150; --dn:#d93636; --amber:#b9770e; --cyan:#0a8aa0; --accent:#2c5fd8;
+    --upbg:rgba(18,161,80,.12); --dnbg:rgba(217,54,54,.12);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f3f5f8; --card:#ffffff; --card2:#eef1f5; --line:#d6dce4;
+  --text:#14181d; --dim:#5d6877; --up:#12a150; --dn:#d93636; --amber:#b9770e; --cyan:#0a8aa0; --accent:#2c5fd8;
+  --upbg:rgba(18,161,80,.12); --dnbg:rgba(217,54,54,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+body{min-height:100vh;min-height:100dvh;padding-top:env(safe-area-inset-top);
+  padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .amber{color:var(--amber)} .cyan{color:var(--cyan)}
+
+header{position:sticky;top:0;z-index:20;background:var(--bg);padding:10px 16px 8px;
+  display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;font-weight:650;flex:1}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
+.dot.ok{background:var(--up)} .dot.wait{background:var(--amber)} .dot.bad{background:var(--dn)}
+.iconbtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:10px;
+  min-width:44px;min-height:44px;font-size:20px}
+#strip{display:flex;gap:8px;overflow-x:auto;padding:10px 16px 4px;scrollbar-width:none}
+#strip::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 10px;min-width:128px}
+.chip .n{font-size:12px;color:var(--dim)} .chip .p{font-size:16px;font-weight:600}
+main{padding:8px 16px 16px}
+.tab{display:none} .tab.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+.card h2{margin:0 0 8px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.chead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.chead{row-gap:0} .chead b{font-size:16px} .chead .px{font-size:20px;font-weight:650} .chead .meta{flex-basis:100%;color:var(--dim);font-size:11px;margin-top:-2px}
+.ohlc{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:12px;color:var(--dim);margin:4px 0 8px}
+.ohlc span{display:flex;flex-direction:column;min-width:0}
+.ohlc span i{font-style:normal;font-size:10px;letter-spacing:.06em}
+.ohlc span b{color:var(--text);font-weight:600;white-space:nowrap}
+.ohlc .none{grid-column:1/-1;display:block}
+canvas{width:100%;height:210px;display:block;touch-action:pan-y}
+.empty{color:var(--dim);text-align:center;padding:28px 8px}
+
+/* log */
+.row{display:flex;gap:8px;margin:8px 0}
+.seg{flex:1;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--text);
+  border-radius:12px;font-size:15px}
+.seg.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.line{border-bottom:1px solid var(--line);padding:8px 2px}
+.l1{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.l1 .t{color:var(--dim);font-size:12px} .l1 .pr{font-weight:650}
+.l2{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;font-size:12px;color:var(--dim)}
+.pill{border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--dim)}
+.pill.bs{background:var(--up);color:#06210f;border-color:var(--up)} .pill.b{color:var(--up);border-color:var(--up)}
+.pill.ss{background:var(--dn);color:#2b0606;border-color:var(--dn)} .pill.s{color:var(--dn);border-color:var(--dn)}
+.sig{border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700}
+.sig.g{background:var(--upbg);color:var(--up)} .sig.r{background:var(--dnbg);color:var(--dn)}
+.sig.a{background:rgba(245,185,66,.16);color:var(--amber)} .sig.c{background:rgba(79,209,232,.14);color:var(--cyan)}
+
+/* trade */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label.f{display:block;font-size:12px;color:var(--dim);margin-bottom:4px}
+input,select{width:100%;min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--card2);
+  color:var(--text);padding:0 12px;font-size:16px;font-family:inherit}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.btn{min-height:52px;border-radius:14px;border:0;font-size:17px;font-weight:700;color:#fff}
+.btn.buy{background:var(--up);color:#052713} .btn.sell{background:var(--dn);color:#2b0606}
+.btn.ghost{background:var(--card2);color:var(--text);border:1px solid var(--line);font-size:15px;font-weight:600}
+.btn:disabled{opacity:.5}
+.msg{white-space:pre-line;font-size:13px;margin-top:10px;min-height:20px;word-break:break-word}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--card2);border-radius:12px;padding:10px}
+.stat .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.stat .v{font-size:19px;font-weight:700;margin-top:2px}
+.pos{border-top:1px solid var(--line);padding:10px 0}
+.pos:first-child{border-top:0}
+.pos .a{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pos .s{letter-spacing:1px;font-size:15px;margin-top:2px;overflow:hidden;white-space:nowrap}
+details summary{min-height:44px;display:flex;align-items:center;color:var(--dim);cursor:pointer}
+.h{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+
+/* tab bar */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:var(--card);
+  border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;min-height:56px;background:none;border:0;color:var(--dim);font-size:12px;font-weight:600}
+nav button span{display:block;font-size:20px;line-height:1.1}
+nav button.on{color:var(--accent)}
+
+/* settings sheet */
+#sheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:none;align-items:flex-end}
+#sheet.open{display:flex}
+#sheet .in{background:var(--card);width:100%;max-height:88dvh;overflow:auto;border-radius:18px 18px 0 0;
+  padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+#sheet h3{margin:0 0 12px}
+#sheet .fld{margin-bottom:12px}
+.note{font-size:12px;color:var(--dim);margin-top:8px}
+.banner{background:rgba(245,185,66,.16);color:var(--amber);border-radius:10px;padding:8px 10px;font-size:12px;margin:8px 0;display:none}
+.banner.show{display:block}
+</style>
+</head>
+<body>
+
+<header>
+  <span id="dot" class="dot" title="connection"></span>
+  <h1>Coin Candles <span class="dim" style="font-weight:500">· paper</span></h1>
+  <button class="iconbtn" id="gear" aria-label="Settings">⚙︎</button>
+</header>
+<div id="strip"></div>
+
+<main>
+  <div id="banner" class="banner"></div>
+
+  <section id="tab-charts" class="tab active"></section>
+
+  <section id="tab-log" class="tab">
+    <div class="row">
+      <button class="seg on" id="f-all">All trades</button>
+      <button class="seg" id="f-sig">Signals only</button>
+      <button class="seg" id="f-clear" style="flex:.6">Clear</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <section id="tab-trade" class="tab">
+    <div class="card">
+      <h2>Paper order <span class="dim" id="feeNote"></span></h2>
+      <div class="grid2">
+        <div><label class="f" for="coin">Coin</label>
+          <input id="coin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="BTC-USD"></div>
+        <div><label class="f" for="qty">Amount (coins)</label>
+          <input id="qty" inputmode="decimal" autocomplete="off" placeholder="0.1" value="1"></div>
+      </div>
+      <div class="row" id="coinChips" style="flex-wrap:wrap"></div>
+      <div class="btns">
+        <button class="btn buy" id="buy">BUY</button>
+        <button class="btn sell" id="sell">SELL</button>
+      </div>
+      <div class="btns">
+        <button class="btn ghost" id="sellall">Sell all of coin</button>
+        <button class="btn ghost" id="reset">Reset paper trades</button>
+      </div>
+      <details><summary>Type a command instead</summary>
+        <input id="cmd" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false"
+               placeholder="buy .1 btc  ·  sell all eth  ·  reset yes" enterkeyhint="send">
+      </details>
+      <div class="msg mono" id="msg"></div>
+    </div>
+
+    <div class="card"><h2>Profit tally</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="card"><h2>Open positions</h2><div id="positions" class="dim">No open positions.</div></div>
+    <div class="card"><details><summary>Trade history</summary><div id="history"></div></details></div>
+    <p class="note">Paper trading only. Fills use the live best ask (buys) and best bid (sells) plus a taker fee.
+      Not financial advice.</p>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="charts" class="on"><span>📈</span>Charts</button>
+  <button data-tab="log"><span>🧾</span>Ticker</button>
+  <button data-tab="trade"><span>💵</span>Paper</button>
+</nav>
+
+<div id="sheet" role="dialog" aria-modal="true"><div class="in">
+  <h3>Settings</h3>
+  <div class="fld"><label class="f" for="s-coins">Coins to watch (up to 4, space or comma separated)</label>
+    <input id="s-coins" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+  <div class="grid2">
+    <div class="fld"><label class="f" for="s-int">Candle size</label>
+      <select id="s-int">
+        <option value="10">10 seconds</option><option value="30">30 seconds</option>
+        <option value="60">1 minute</option><option value="300">5 minutes</option>
+        <option value="900">15 minutes</option><option value="3600">1 hour</option>
+      </select></div>
+    <div class="fld"><label class="f" for="s-n">Candles shown</label>
+      <input id="s-n" inputmode="numeric" autocomplete="off"></div>
+  </div>
+  <div class="grid2">
+    <div class="fld"><label class="f" for="s-fee">Taker fee %</label>
+      <input id="s-fee" inputmode="decimal" autocomplete="off"></div>
+    <div class="fld"><label class="f" for="s-fit">Chart scale</label>
+      <select id="s-fit"><option value="recent">Zoom: last 3</option><option value="all">Fit all</option></select></div>
+  </div>
+  <div class="grid2">
+    <div class="fld"><label class="f" for="s-theme">Theme</label>
+      <select id="s-theme"><option value="auto">Match phone</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+    <div class="fld"><label class="f" for="s-awake">Keep screen on</label>
+      <select id="s-awake"><option value="0">No</option><option value="1">Yes</option></select></div>
+  </div>
+  <div class="btns"><button class="btn ghost" id="s-cancel">Cancel</button><button class="btn buy" id="s-save">Save</button></div>
+  <p class="note">Taker fee: Coinbase Intro tier is 0.90% (check yours). Candles for 1m and larger start with Coinbase history. 10s/30s candles build from live trades.
+    Your paper trades are saved on this phone (Safari website data). Clearing it erases them.</p>
+</div></div>
+
+<script>
+"use strict";
+/* ===================================================================
+   Ports of the desktop scripts (coinbase_live.py / coinbase_candles.py /
+   paper_trade.py) to the browser. Same signals, same fee math.
+   =================================================================== */
+const WS_URL = "wss://ws-feed.exchange.coinbase.com";
+const REST   = "https://api.exchange.coinbase.com";
+const GRAN   = [60, 300, 900, 3600, 21600, 86400];
+const KEY    = {settings: "cc.settings.v1", trades: "cc.trades.v1"};
+const DEFAULTS = {products: ["BTC-USD", "ETH-USD"], interval: 60, candles: 8, feePct: 0.9, fit: "recent",
+                  theme: "auto", keepAwake: false,
+                  pressureWindow: 12, maWindow: 20, maGapBps: 1, spreadBps: 8, spreadMult: 2, volAccel: 1.8};
+const BUY_ZONE = 70, SELL_ZONE = 30, RECENT_S = 10, BASELINE_S = 60, MIN_RECENT = 3, COOLDOWN_S = 5,
+      SPREAD_SAMPLES = 200, SPREAD_MIN = 30, FLUSH_MS = 50, LOG_KEEP = 300, TRAIL_BUCKET_S = 5, TRAIL_KEEP = 36;
+const SPARK = "▁▂▃▄▅▆▇█";
+const EPS = 1e-9;
+
+const $  = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const nowS = () => performance.now() / 1000;
+
+/* ---------- storage (Safari private mode can throw) ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+};
+
+/* ---------- formatting ---------- */
+const nf = (x, n) => x.toLocaleString("en-US", {minimumFractionDigits: n, maximumFractionDigits: n});
+function priceFmt(x) {
+  const a = Math.abs(x), n = a >= 100 ? 2 : a >= 1 ? 4 : 8;
+  let [w, f] = nf(x, n).split(".");
+  return w + "." + (f || "").replace(/0+$/, "").padEnd(2, "0");
+}
+function moneyS(x) {                       // $6,037.68 normally; $1.0009 / $0.1009 under $10
+  if (Math.abs(x) >= 10 || x === 0) return (x < 0 ? "-" : "") + "$" + nf(Math.abs(x), 2);
+  const [w, f] = Math.abs(x).toFixed(4).replace(/0+$/, "").split(".");
+  return (x < 0 ? "-" : "") + "$" + w + "." + (f || "").padEnd(2, "0");
+}
+const qtyFmt = x => { const t = (+x).toFixed(8).replace(/0+$/, "").replace(/\.$/, ""); return t === "" ? "0" : t; };
+const signedHtml = x => `<span class="${x >= 0 ? "up" : "dn"}">${x >= 0 ? "+" : "-"}$${nf(Math.abs(x), 2)}</span>`;
+const pctHtml = x => `<span class="${x >= 0 ? "up" : "dn"}">${x >= 0 ? "+" : ""}${x.toFixed(2)}%</span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const decimalsOf = s => { s = String(s); return s.includes(".") ? s.replace(/0+$/, "").split(".")[1].length : 0; };
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const hhmmss = ms => new Date(ms).toLocaleTimeString("en-GB");
+
+/* ---------- settings ---------- */
+let cfg = Object.assign({}, DEFAULTS, store.get(KEY.settings, {}));
+cfg.products = [...new Set((cfg.products || DEFAULTS.products).map(String).map(s => s.toUpperCase()))].slice(0, 4);
+if (!cfg.products.length) cfg.products = DEFAULTS.products.slice();
+
+/* ---------- per-coin state ---------- */
+const S = {};                    // product -> state
+const marks = {};                // product -> {bid, ask, price, t}  (for P&L)
+const trails = {}, moves = {};   // sparkline trail + last move direction
+function newState() {
+  return {price: null, bid: 0, ask: 0, decimals: 2, prices: [], trades: [], flow: [], spreads: [],
+          first: nowS(), maSide: 0, zone: null, wide: false, hot: false, fired: {}, bars: [], lat: null};
+}
+function ensureState() {
+  for (const p of cfg.products) if (!S[p]) S[p] = newState();
+}
+
+/* ---------- candles ---------- */
+function addCandle(st, tsMs, price) {
+  const iv = cfg.interval * 1000, b = Math.floor(tsMs / iv) * iv, bars = st.bars, last = bars[bars.length - 1];
+  if (last && last.t === b) { last.h = Math.max(last.h, price); last.l = Math.min(last.l, price); last.c = price; }
+  else if (!last || b > last.t) { bars.push({t: b, o: price, h: price, l: price, c: price}); if (bars.length > 120) bars.shift(); }
+}
+async function loadHistory(prod) {
+  if (!GRAN.includes(cfg.interval)) return;
+  const st = S[prod];
+  try {
+    const r = await fetchJson(`${REST}/products/${prod}/candles?granularity=${cfg.interval}`);
+    const hist = r.sort((a, b) => a[0] - b[0]).map(x => ({t: x[0] * 1000, o: +x[3], h: +x[2], l: +x[1], c: +x[4]}));
+    const live = st.bars.filter(b => !hist.some(h => h.t === b.t));
+    const merged = hist.concat(live).sort((a, b) => a.t - b.t).slice(-120);
+    // keep the live candle's running high/low if it overlaps the newest history bar
+    const ov = st.bars.find(b => hist.some(h => h.t === b.t));
+    if (ov) { const h = merged.find(x => x.t === ov.t); h.h = Math.max(h.h, ov.h); h.l = Math.min(h.l, ov.l); h.c = ov.c; }
+    st.bars = merged;
+    if (merged.length) st.decimals = Math.max(st.decimals, decimalsOf(String(merged[merged.length - 1].c)), 2);
+    dirty.charts = true; schedule();
+  } catch (e) { banner(`${prod}: candle history unavailable (${e.message}). Candles will build live.`); }
+}
+
+/* ---------- network helpers ---------- */
+async function fetchJson(url, ms = 8000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, {signal: ctl.signal});
+    if (!r.ok) throw new Error(r.status === 404 ? "unknown product" : "HTTP " + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function getQuote(prod) {            // fresh best bid/ask for paper fills
+  try {
+    const d = await fetchJson(`${REST}/products/${prod}/ticker`, 6000);
+    const q = {bid: +d.bid, ask: +d.ask, price: +d.price};
+    if (!(q.bid > 0 && q.ask > 0)) throw new Error("no market");
+    return q;
+  } catch (e) {
+    const m = marks[prod];                  // fall back to the live feed if it is fresh
+    if (m && m.bid > 0 && m.ask > 0 && nowS() - m.t < 15) return {bid: m.bid, ask: m.ask, price: m.price};
+    throw new Error(e.message === "unknown product" ? `unknown product ${prod}` : `no live price for ${prod} (${e.message})`);
+  }
+}
+
+/* ===================================================================
+   Signals (port of coinbase_live.py)
+   =================================================================== */
+function cooled(st, key, now) { if (now - (st.fired[key] ?? -1e9) < COOLDOWN_S) return false; st.fired[key] = now; return true; }
+function pressureOf(st) {
+  const ready = st.trades.length >= cfg.pressureWindow;
+  if (!st.trades.length) return {pct: 50, ready: false};
+  let total = 0, buys = 0;
+  for (const t of st.trades) { total += t.size; if (t.side === "buy") buys += t.size; }
+  if (total <= 0) { total = st.trades.length; buys = st.trades.filter(t => t.side === "buy").length; }
+  return {pct: buys / total * 100, ready};
+}
+function volAccelerating(st, now) {
+  if (now - st.first < RECENT_S + BASELINE_S) return false;
+  const cut = now - RECENT_S, recent = st.flow.filter(f => f.t >= cut);
+  const prior = st.flow.filter(f => f.t < cut).reduce((a, f) => a + f.size, 0);
+  if (recent.length < MIN_RECENT || prior <= 0) return false;
+  return recent.reduce((a, f) => a + f.size, 0) / RECENT_S > cfg.volAccel * (prior / BASELINE_S);
+}
+const spreadThreshold = st => st.spreads.length < SPREAD_MIN ? Infinity
+  : Math.max(cfg.spreadBps, cfg.spreadMult * median(st.spreads));
+
+function updateState(st, tk, now) {
+  st.decimals = Math.max(st.decimals, tk.decimals, tk.price < 1 ? 6 : tk.price < 100 ? 4 : 2);
+  st.prices.push(tk.price); if (st.prices.length > cfg.maWindow) st.prices.shift();
+  if (tk.side === "buy" || tk.side === "sell") { st.trades.push({side: tk.side, size: tk.size}); if (st.trades.length > cfg.pressureWindow) st.trades.shift(); }
+  if (tk.size > 0) st.flow.push({t: now, size: tk.size});
+  while (st.flow.length && st.flow[0].t < now - (RECENT_S + BASELINE_S)) st.flow.shift();
+}
+function computeSignals(st, tk, now) {
+  const sig = []; let ma = null;
+  if (st.prices.length >= cfg.maWindow) {
+    ma = st.prices.reduce((a, b) => a + b, 0) / st.prices.length;
+    const gap = ma * cfg.maGapBps / 10000;
+    const side = tk.price > ma + gap ? 1 : tk.price < ma - gap ? -1 : st.maSide;
+    if (st.maSide && side !== st.maSide) {
+      if (side > 0 && cooled(st, "ma_up", now)) sig.push({t: "▲ MA CROSS UP", c: "g"});
+      else if (side < 0 && cooled(st, "ma_dn", now)) sig.push({t: "▼ MA CROSS DN", c: "r"});
+    }
+    st.maSide = side;
+  }
+  const {pct, ready} = pressureOf(st);
+  const zone = !ready ? null : pct >= BUY_ZONE ? "buy" : pct <= SELL_ZONE ? "sell" : null;
+  if (zone !== st.zone) {
+    if (zone === "buy" && cooled(st, "p_buy", now)) sig.push({t: "BUY PRESSURE", c: "g"});
+    else if (zone === "sell" && cooled(st, "p_sell", now)) sig.push({t: "SELL PRESSURE", c: "r"});
+    st.zone = zone;
+  }
+  if (tk.bid && tk.ask) {
+    const mid = (tk.bid + tk.ask) / 2, bp = (tk.ask - tk.bid) / mid * 10000;
+    const wide = bp >= spreadThreshold(st);
+    if (wide && !st.wide && cooled(st, "spread", now)) sig.push({t: `⚠ WIDE SPREAD ${bp.toFixed(1)}bps`, c: "a"});
+    st.wide = wide; st.spreads.push(bp); if (st.spreads.length > SPREAD_SAMPLES) st.spreads.shift();
+  }
+  const hot = volAccelerating(st, now);
+  if (hot && !st.hot && cooled(st, "vol", now)) sig.push({t: "⚡ VOL ACCEL", c: "c"});
+  st.hot = hot;
+  return {sig, ma};
+}
+
+/* ---------- live price tracker (direction + sparkline trail) ---------- */
+function trackPrice(prod, price, tsMs, bid, ask, fromRest) {
+  const st = S[prod];
+  if (fromRest && st && st._tickAt && nowS() - st._tickAt < 10) {      // live ticks are fresher: only refresh bid/ask
+    if (bid > 0 && ask > 0) marks[prod] = {bid, ask, price: marks[prod] ? marks[prod].price : price, t: nowS()};
+    return;
+  }
+  const prev = S[prod] && S[prod]._last;
+  if (prev != null && price !== prev) moves[prod] = price > prev ? 1 : -1;
+  if (S[prod]) S[prod]._last = price;
+  const b = Math.floor(tsMs / 1000 / TRAIL_BUCKET_S), tr = trails[prod] || (trails[prod] = []);
+  if (tr.length && tr[tr.length - 1][0] === b) tr[tr.length - 1][1] = price; else { tr.push([b, price]); if (tr.length > TRAIL_KEEP) tr.shift(); }
+  if (bid > 0 && ask > 0) marks[prod] = {bid, ask, price, t: nowS()};
+}
+function sparkline(prices) {
+  const lo = Math.min(...prices), hi = Math.max(...prices);
+  if (hi === lo) return SPARK[3].repeat(prices.length);
+  return prices.map(x => SPARK[Math.min(7, Math.floor((x - lo) / (hi - lo) * 8))]).join("");
+}
+
+/* ===================================================================
+   Log ticker (merges same-time/price/side fills into one row, like the desktop version)
+   =================================================================== */
+const logLines = []; const pending = {};
+let sigOnly = false;
+function flushPending(prod) {
+  const p = pending[prod]; if (!p) return;
+  clearTimeout(p.timer); delete pending[prod];
+  logLines.unshift(p.line); if (logLines.length > LOG_KEEP) logLines.pop();
+  dirty.log = true; schedule();
+}
+function queueLine(line) {
+  const key = `${Math.floor(line.ts / 1000)}|${line.price}|${line.side}`, p = pending[line.prod];
+  if (p && p.key === key) {
+    p.line.n += 1; p.line.size += line.size; p.line.signals.push(...line.signals);
+    p.line.pressure = line.pressure; p.line.ma = line.ma; return;
+  }
+  flushPending(line.prod);
+  pending[line.prod] = {key, line, timer: setTimeout(() => flushPending(line.prod), FLUSH_MS)};
+}
+function pressureHtml(pr) {
+  if (!pr.ready) return `<span class="pill">WARM ${pr.n}/${cfg.pressureWindow}</span>`;
+  const p = pr.pct, cls = p >= BUY_ZONE ? "bs" : p >= 58 ? "b" : p <= SELL_ZONE ? "ss" : p <= 42 ? "s" : "";
+  const lab = p >= 58 ? "BUY" : p <= 42 ? "SELL" : "NEUT";
+  return `<span class="pill ${cls}">${lab} ${p.toFixed(0)}%</span>`;
+}
+function renderLog() {
+  const rows = logLines.filter(l => !sigOnly || l.signals.length).slice(0, 80).map(l => {
+    const lat = l.lat == null ? "" : l.lat < 0 ? "lat ≤0ms" : `lat ${Math.round(l.lat)}ms`;
+    const sz = l.size >= 1 ? nf(l.size, 2) : l.size.toFixed(6).replace(/0+$/, "");
+    return `<div class="line"><div class="l1 mono"><span class="t">${hhmmss(l.ts)}</span><b>${esc(l.prod)}</b>
+      <span class="pr ${l.side === "buy" ? "up" : l.side === "sell" ? "dn" : ""}">$${nf(l.price, l.dec)}</span>
+      <span class="dim">${esc(l.side)} ${sz}${l.n > 1 ? " ×" + l.n : ""}</span></div>
+      <div class="l2 mono">${pressureHtml(l.pressure)}${l.ma ? `<span>MA ${nf(l.ma, l.dec)}</span>` : ""}<span>${lat}</span>
+      ${l.signals.map(s => `<span class="sig ${s.c}">${esc(s.t)}</span>`).join("")}</div></div>`;
+  });
+  $("#log").innerHTML = rows.join("") || `<div class="empty">${sigOnly ? "No signals yet." : "Waiting for trades…"}</div>`;
+}
+
+/* ===================================================================
+   Feed (websocket) - reconnects with backoff, and when the app returns to the foreground
+   =================================================================== */
+let ws = null, wsTry = 0, wsTimer = null, wsGen = 0;
+function setConn(kind, text) { $("#dot").className = "dot " + kind; $("#dot").title = text; }
+function connect() {
+  clearTimeout(wsTimer);
+  const gen = ++wsGen;
+  try { if (ws) { ws.onclose = null; ws.close(); } } catch (e) {}
+  setConn("wait", "connecting");
+  try { ws = new WebSocket(WS_URL); } catch (e) { return scheduleReconnect(gen); }
+  ws.onopen = () => ws.send(JSON.stringify({type: "subscribe", product_ids: cfg.products, channels: ["ticker"]}));
+  ws.onmessage = ev => {
+    if (gen !== wsGen) return;
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.type === "ticker") { wsTry = 0; setConn("ok", "live"); try { onTicker(m); } catch (e) { console.warn("tick skipped", e); } }
+    else if (m.type === "error") banner(`Coinbase: ${m.message || "error"} ${m.reason || ""}`);
+    else if (m.type === "subscriptions") { setConn("ok", "subscribed"); }
+  };
+  ws.onclose = () => { if (gen === wsGen) { setConn("bad", "disconnected"); scheduleReconnect(gen); } };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+function scheduleReconnect(gen) {
+  if (gen !== wsGen) return;
+  const d = Math.min(30, 2 ** wsTry) * 1000 + Math.random() * 500; wsTry++;
+  wsTimer = setTimeout(connect, d);
+}
+function onTicker(m) {
+  const prod = m.product_id, st = S[prod]; if (!st) return;
+  const price = +m.price, bid = +m.best_bid || 0, ask = +m.best_ask || 0, size = +m.last_size || 0, side = m.side || "";
+  const tsMs = m.time ? Date.parse(m.time) : Date.now(), now = nowS();
+  const tk = {price, bid, ask, size, side, decimals: decimalsOf(m.price)};
+  st.price = price; if (bid) st.bid = bid; if (ask) st.ask = ask;
+  st._tickAt = nowS();
+  trackPrice(prod, price, Date.now(), bid, ask);
+  addCandle(st, Date.now(), price);
+  updateState(st, tk, now);
+  const {sig, ma} = computeSignals(st, tk, now);
+  const pr = pressureOf(st); pr.n = st.trades.length;
+  const lat = isNaN(tsMs) ? null : Date.now() - tsMs;
+  queueLine({ts: isNaN(tsMs) ? Date.now() : tsMs, prod, price, dec: st.decimals, side, size, n: 1, lat,
+             pressure: pr, ma, signals: sig});
+  dirty.strip = dirty.charts = dirty.trade = true; schedule();
+}
+
+/* ===================================================================
+   Paper trading (port of paper_trade.py: average cost, entry fees in cost, exit fee on P&L)
+   =================================================================== */
+let trades = store.get(KEY.trades, []);
+const r8 = x => Math.round(x * 1e8) / 1e8;
+function replay() {
+  const pos = {}, realizedBy = {}; let realized = 0, fees = 0;
+  trades.forEach((t, i) => {
+    fees += t.fee;
+    const p = pos[t.product] || (pos[t.product] = {qty: 0, cost: 0, gross: 0});
+    if (t.side === "buy") { p.qty = r8(p.qty + t.qty); p.cost += t.qty * t.price + t.fee; p.gross += t.qty * t.price; }
+    else {
+      const full = Math.abs(t.qty - p.qty) < EPS, f = full ? 1 : t.qty / p.qty;
+      const basis = p.cost * f, gout = p.gross * f, pnl = (t.qty * t.price - t.fee) - basis;
+      realizedBy[i] = pnl; realized += pnl;
+      p.qty = full ? 0 : r8(p.qty - t.qty); p.cost -= basis; p.gross -= gout;
+    }
+    if (p.qty < EPS) delete pos[t.product];
+  });
+  return {pos, realizedBy, realized, fees};
+}
+const held = prod => (replay().pos[prod] || {qty: 0}).qty;
+function execute(side, qty, prod, q) {
+  qty = r8(qty);
+  if (!(qty > 0)) throw new Error("amount must be greater than 0");
+  if (side === "sell" && qty - held(prod) > EPS) throw new Error(`you only hold ${qtyFmt(held(prod))} ${prod}`);
+  const price = side === "buy" ? q.ask : q.bid, fee = qty * price * cfg.feePct / 100;
+  const t = {ts: new Date().toISOString(), side, product: prod, qty, price, fee, feePct: cfg.feePct};
+  const before = replay().realized; trades.push(t);
+  if (!store.set(KEY.trades, trades)) banner("Could not save trades (private browsing?). They will be lost on reload.");
+  return {t, realizedDelta: replay().realized - before};
+}
+function describe(side, qty, prod, t, realized) {
+  const gross = qty * t.price;
+  if (side === "buy") return `BOUGHT ${qtyFmt(qty)} ${prod} @ ${priceFmt(t.price)} (ask)\nPurchase ${moneyS(gross)} + fee ${moneyS(t.fee)} = ${moneyS(gross + t.fee)}`;
+  return `SOLD ${qtyFmt(qty)} ${prod} @ ${priceFmt(t.price)} (bid)\nSale ${moneyS(gross)} - fee ${moneyS(t.fee)} = ${moneyS(gross - t.fee)}   P&L ${realized >= 0 ? "+" : "-"}$${nf(Math.abs(realized), 2)}`;
+}
+function parseOrder(text, defCoin) {
+  const parts = text.trim().split(/\s+/); const a = parts[0].toLowerCase();
+  const side = {b: "buy", buy: "buy", s: "sell", sell: "sell"}[a];
+  if (!side) throw new Error(`unknown command '${a}' (try: buy .1 btc)`);
+  let qty = null, prod = null;
+  for (const tok of parts.slice(1)) {
+    if (/^\d*\.?\d+$/.test(tok)) qty = +tok; else if (tok.toLowerCase() === "all") qty = "all"; else prod = tok.toUpperCase();
+  }
+  if (qty === null) throw new Error(`usage: ${side} <amount> <coin>   e.g. ${side} 1 btc`);
+  prod = prod || defCoin; if (!prod.includes("-")) prod += "-USD";
+  return {side, qty, prod};
+}
+let busy = false, lastMsg = "";
+async function runOrder(text, defCoin) {
+  if (busy) return; busy = true; setBtns();
+  try {
+    const first = text.trim().split(/\s+/)[0].toLowerCase();
+    if (first === "reset") {
+      if (/^reset\s+yes$/i.test(text.trim())) { trades = []; store.set(KEY.trades, trades); lastMsg = "Reset."; }
+      else lastMsg = "type 'reset yes' to wipe all paper trades";
+    } else {
+      const o = parseOrder(text, defCoin);
+      const q = await getQuote(o.prod);
+      if (o.qty === "all") { o.qty = held(o.prod); if (!(o.qty > 0)) throw new Error(`you don't hold any ${o.prod}`); }
+      const res = execute(o.side, o.qty, o.prod, q);
+      lastMsg = describe(o.side, r8(o.qty), o.prod, res.t, res.realizedDelta);
+      $("#msg").className = "msg mono";
+    }
+  } catch (e) { lastMsg = "Error: " + e.message; $("#msg").className = "msg mono dn"; busy = false; setBtns(); renderTrade(); return; }
+  $("#msg").className = "msg mono"; busy = false; setBtns(); dirty.trade = true; renderTrade();
+}
+function setBtns() { for (const id of ["buy", "sell", "sellall"]) $("#" + id).disabled = busy; }
+
+/* ---------- held-coin repricing (REST, for coins not on the feed or with stale bids) ---------- */
+async function pollHeld() {
+  if (document.hidden) return;
+  for (const prod of Object.keys(replay().pos)) {
+    try { const q = await getQuote(prod); trackPrice(prod, q.price, Date.now(), q.bid, q.ask, true); dirty.trade = true; } catch (e) {}
+  }
+  schedule();
+}
+
+/* ===================================================================
+   Rendering
+   =================================================================== */
+const dirty = {strip: true, charts: true, log: true, trade: true};
+let timer = null, activeTab = "charts";
+function schedule() { if (!timer) timer = setTimeout(() => { timer = null; paint(); }, 200); }
+function paint() {
+  if (dirty.strip) { dirty.strip = false; renderStrip(); }
+  if (dirty.charts && activeTab === "charts") { dirty.charts = false; renderCharts(); }
+  if (dirty.log && activeTab === "log") { dirty.log = false; renderLog(); }
+  if (dirty.trade && activeTab === "trade") { dirty.trade = false; renderTrade(); }
+}
+function renderStrip() {
+  $("#strip").innerHTML = cfg.products.map(p => {
+    const st = S[p], bars = st.bars, first = bars.length ? bars[Math.max(0, bars.length - cfg.candles)].o : null;
+    const chg = st.price != null && first ? (st.price - first) / first * 100 : null;
+    return `<div class="chip mono"><div class="n">${esc(p)}</div>
+      <div class="p ${moves[p] > 0 ? "up" : moves[p] < 0 ? "dn" : ""}">${st.price != null ? "$" + nf(st.price, st.decimals) : "…"}</div>
+      <div class="n">${chg != null ? pctHtml(chg) : "&nbsp;"}</div></div>`;
+  }).join("");
+}
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function buildCharts() {
+  $("#tab-charts").innerHTML = cfg.products.map(p => `<div class="card" data-p="${esc(p)}">
+    <div class="chead mono"><b>${esc(p)}</b><span class="px">…</span><span class="chg"></span><span class="meta"></span></div>
+    <div class="ohlc mono"></div><canvas></canvas></div>`).join("");
+}
+function renderCharts() {
+  for (const p of cfg.products) {
+    const card = $(`#tab-charts [data-p="${p}"]`); if (!card) continue;
+    const st = S[p], bars = st.bars.slice(-cfg.candles), d = st.decimals;
+    const last = bars[bars.length - 1];
+    $(".px", card).textContent = st.price != null ? "$" + nf(st.price, d) : "…";
+    $(".px", card).className = "px " + (moves[p] > 0 ? "up" : moves[p] < 0 ? "dn" : "");
+    $(".meta", card).textContent = (cfg.interval >= 60 ? cfg.interval / 60 + "m" : cfg.interval + "s") + " candles";
+    if (last) {
+      const chg = (last.c - bars[0].o) / bars[0].o * 100;
+      $(".chg", card).innerHTML = pctHtml(chg);
+      $(".ohlc", card).innerHTML = ["O", "H", "L", "C"].map((k, i) => `<span><i>${k}</i><b>${nf([last.o, last.h, last.l, last.c][i], d)}</b></span>`).join("");
+    } else { $(".chg", card).textContent = ""; $(".ohlc", card).innerHTML = '<span class="none">waiting for first trades…</span>'; }
+    drawChart($("canvas", card), bars, d);
+  }
+}
+function drawChart(cv, bars, dec) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const dim = cssVar("--dim"), line = cssVar("--line"), up = cssVar("--up"), dn = cssVar("--dn"), text = cssVar("--text");
+  ctx.font = "11px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle";
+  if (!bars.length) { ctx.fillStyle = dim; ctx.textAlign = "center"; ctx.fillText("waiting for trades…", w / 2, h / 2); return; }
+  const last = bars[bars.length - 1], upLast = last.c >= last.o;
+  const labW = Math.max(...[nf(last.h, dec), nf(last.l, dec), "O " + nf(last.o, dec), "C " + nf(last.c, dec), nf(Math.max(...bars.map(b => b.h)), dec)]
+    .map(s => ctx.measureText(s).width));
+  const padL = Math.ceil(labW) + 14, padR = 8, padT = 10, padB = 18, cw = w - padL - padR, ch = h - padT - padB;
+  const scale = cfg.fit === "all" ? bars : bars.slice(-3);
+  let hi = Math.max(...scale.map(b => b.h)), lo = Math.min(...scale.map(b => b.l));
+  if (hi === lo) { hi *= 1.0005; lo *= 0.9995; }
+  const pad = (hi - lo) * 0.06; hi += pad; lo -= pad;
+  const y = p => padT + (hi - p) / (hi - lo) * ch;
+  // grid lines
+  ctx.strokeStyle = line; ctx.lineWidth = 1;
+  for (const p of [hi, (hi + lo) / 2, lo]) { ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke(); }
+  ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, cw, ch); ctx.clip();
+  const slot = cw / Math.max(bars.length, 1), bw = Math.min(slot * 0.62, 30);
+  bars.forEach((b, i) => {
+    const x = padL + (i + 0.5) * slot, col = b.c >= b.o ? up : dn;
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, y(b.h)); ctx.lineTo(x, y(b.l)); ctx.stroke();
+    const top = y(Math.max(b.o, b.c)), bot = y(Math.min(b.o, b.c));
+    ctx.fillRect(x - bw / 2, top, bw, Math.max(2, bot - top));
+  });
+  // live candle open / close lines
+  ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+  ctx.strokeStyle = text; ctx.globalAlpha = .55; ctx.beginPath(); ctx.moveTo(padL, y(last.o)); ctx.lineTo(w - padR, y(last.o)); ctx.stroke();
+  ctx.strokeStyle = upLast ? up : dn; ctx.globalAlpha = .9; ctx.beginPath(); ctx.moveTo(padL, y(last.c)); ctx.lineTo(w - padR, y(last.c)); ctx.stroke();
+  ctx.restore(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  // axis labels, highest priority first; a label is dropped if it would sit on top of one already placed
+  const clampY = v => Math.min(h - padB - 6, Math.max(padT + 6, v));
+  const labels = [[clampY(y(last.c)), "C " + nf(last.c, dec), upLast ? up : dn], [clampY(y(last.o)), "O " + nf(last.o, dec), text],
+                  [clampY(y(hi)), nf(hi, dec), dim], [clampY(y(lo)), nf(lo, dec), dim], [clampY(y((hi + lo) / 2)), nf((hi + lo) / 2, dec), dim]];
+  const placed = []; ctx.textAlign = "right";
+  for (const [ly, txt, col] of labels) {
+    if (placed.some(p => Math.abs(p - ly) < 13)) continue;
+    placed.push(ly); ctx.fillStyle = col; ctx.fillText(txt, padL - 6, ly);
+  }
+  // time labels
+  ctx.fillStyle = dim; ctx.textAlign = "left"; ctx.fillText(hhmm(bars[0].t), padL, h - 6);
+  ctx.textAlign = "right"; ctx.fillText(hhmm(last.t), w - padR, h - 6);
+}
+const hhmm = ms => new Date(ms).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", ...(cfg.interval < 60 ? {second: "2-digit"} : {})});
+
+function renderTrade() {
+  const {pos, realizedBy, realized, fees} = replay(), fee = cfg.feePct / 100;
+  $("#feeNote").textContent = `· taker fee ${cfg.feePct}%`;
+  let unreal = 0; const rows = [];
+  for (const [prod, p] of Object.entries(pos).sort()) {
+    const q = marks[prod], avg = p.cost / p.qty, entry = p.gross / p.qty;
+    if (!q) { rows.push(`<div class="pos mono"><div class="a"><b>${esc(prod)}</b><span class="dim">${qtyFmt(p.qty)} @ ${priceFmt(entry)} · pricing…</span></div></div>`); continue; }
+    const u = p.qty * q.bid * (1 - fee) - p.cost; unreal += u;
+    const mv = (q.price - entry) / entry * 100, up = q.price >= entry;
+    const arrow = moves[prod] > 0 ? '<span class="up">▲</span>' : moves[prod] < 0 ? '<span class="dn">▼</span>' : "";
+    const tr = (trails[prod] || []).map(x => x[1]);
+    const brk = p.cost / (p.qty * (1 - fee));
+    rows.push(`<div class="pos mono"><div class="a"><b>${esc(prod)} <span class="dim">${qtyFmt(p.qty)}</span></b>
+      <span>${priceFmt(entry)} → <span class="${up ? "up" : "dn"}">${priceFmt(q.price)}</span> ${arrow} ${pctHtml(mv)}</span></div>
+      <div class="s ${tr.length > 1 && tr[tr.length - 1] >= tr[0] ? "up" : "dn"}">${tr.length > 1 ? sparkline(tr) : '<span class="dim">collecting…</span>'}</div>
+      <div class="a"><span>Net P&amp;L ${signedHtml(u)} ${pctHtml(u / p.cost * 100)}</span><span class="dim">break-even bid ${priceFmt(brk)}</span></div></div>`);
+  }
+  $("#positions").innerHTML = rows.join("") || "No open positions.";
+  const net = realized + unreal;
+  $("#stats").innerHTML = [["Net", net], ["Realized", realized], ["Unrealized", unreal]]
+    .map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v mono">${signedHtml(v)}</div></div>`).join("") +
+    `<div class="stat"><div class="k">Fees paid</div><div class="v mono">${moneyS(fees)}</div></div>`;
+  const hist = trades.slice(-20).map((t, k) => {
+    const i = trades.length - Math.min(20, trades.length) + k;
+    return `<div class="h mono"><span><b class="${t.side === "buy" ? "up" : "dn"}">${t.side.toUpperCase()}</b> ${qtyFmt(t.qty)} ${esc(t.product)} @ ${priceFmt(t.price)}</span>
+      <span class="dim">${i in realizedBy ? signedHtml(realizedBy[i]) : "fee " + moneyS(t.fee)}</span></div>`;
+  }).reverse();
+  $("#history").innerHTML = hist.join("") || '<div class="dim">No trades yet.</div>';
+  const m = $("#msg"); m.textContent = lastMsg;
+  if (!/^Error/.test(lastMsg)) m.className = "msg mono";
+}
+
+/* ===================================================================
+   UI wiring
+   =================================================================== */
+function banner(t) { const b = $("#banner"); b.textContent = t; b.classList.add("show"); clearTimeout(banner._t); banner._t = setTimeout(() => b.classList.remove("show"), 9000); }
+function showTab(name) {
+  activeTab = name;
+  $$("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  $$(".tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
+  dirty.charts = dirty.log = dirty.trade = true; paint(); window.scrollTo(0, 0);
+}
+$$("nav button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("#f-all").onclick = () => { sigOnly = false; $("#f-all").classList.add("on"); $("#f-sig").classList.remove("on"); renderLog(); };
+$("#f-sig").onclick = () => { sigOnly = true; $("#f-sig").classList.add("on"); $("#f-all").classList.remove("on"); renderLog(); };
+$("#f-clear").onclick = () => { logLines.length = 0; renderLog(); };
+
+const coinVal = () => ($("#coin").value.trim().toUpperCase() || cfg.products[0]);
+$("#buy").onclick = () => runOrder(`buy ${$("#qty").value.trim() || "0"} ${coinVal()}`, cfg.products[0]);
+$("#sell").onclick = () => runOrder(`sell ${$("#qty").value.trim() || "0"} ${coinVal()}`, cfg.products[0]);
+$("#sellall").onclick = () => runOrder(`sell all ${coinVal()}`, cfg.products[0]);
+$("#reset").onclick = () => { if (confirm("Delete ALL paper trades? This cannot be undone.")) runOrder("reset yes", cfg.products[0]); };
+$("#cmd").addEventListener("keydown", e => { if (e.key === "Enter") { const v = e.target.value; e.target.value = ""; if (v.trim()) runOrder(v, coinVal()); e.target.blur(); } });
+function buildChips() {
+  $("#coinChips").innerHTML = cfg.products.map(p => `<button class="seg" style="flex:none;padding:0 14px" data-c="${esc(p)}">${esc(p)}</button>`).join("");
+  $$("#coinChips button").forEach(b => b.onclick = () => { $("#coin").value = b.dataset.c; });
+  $("#coin").value = cfg.products.includes($("#coin").value.toUpperCase()) ? $("#coin").value.toUpperCase() : cfg.products[0];
+}
+
+/* settings sheet */
+$("#gear").onclick = () => {
+  $("#s-coins").value = cfg.products.join(" "); $("#s-int").value = String(cfg.interval); $("#s-n").value = cfg.candles;
+  $("#s-fee").value = cfg.feePct; $("#s-fit").value = cfg.fit; $("#s-theme").value = cfg.theme; $("#s-awake").value = cfg.keepAwake ? "1" : "0";
+  $("#sheet").classList.add("open");
+};
+$("#s-cancel").onclick = () => $("#sheet").classList.remove("open");
+$("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") $("#sheet").classList.remove("open"); });
+$("#s-save").onclick = () => {
+  const prods = [...new Set($("#s-coins").value.toUpperCase().split(/[\s,]+/).filter(Boolean).map(s => s.includes("-") ? s : s + "-USD"))].slice(0, 4);
+  if (!prods.length || prods.some(p => !/^[A-Z0-9]+-[A-Z0-9]+$/.test(p))) return alert("Enter coins like BTC-USD ETH-USD");
+  const n = Math.round(+$("#s-n").value), fee = +$("#s-fee").value, iv = Math.max(1, Math.round(+$("#s-int").value));
+  if (!(n >= 2 && n <= 20)) return alert("Candles shown must be between 2 and 20");
+  if (!(fee >= 0 && fee < 100)) return alert("Fee must be between 0 and 100 (percent)");
+  const changedFeed = prods.join() !== cfg.products.join(), changedIv = iv !== cfg.interval;
+  Object.assign(cfg, {products: prods, interval: iv, candles: n, feePct: fee, fit: $("#s-fit").value,
+                      theme: $("#s-theme").value, keepAwake: $("#s-awake").value === "1"});
+  store.set(KEY.settings, cfg); applyTheme(); applyAwake();
+  if (changedIv) for (const k of Object.keys(S)) S[k].bars = [];
+  ensureState(); buildCharts(); buildChips();
+  if (changedFeed) { connect(); }
+  if (changedFeed || changedIv) cfg.products.forEach(loadHistory);
+  dirty.strip = dirty.charts = dirty.log = dirty.trade = true; paint();
+  $("#sheet").classList.remove("open");
+};
+function applyTheme() { cfg.theme === "auto" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", cfg.theme); dirty.charts = true; }
+let wake = null;
+async function applyAwake() {
+  try { if (cfg.keepAwake && "wakeLock" in navigator && !document.hidden) wake = await navigator.wakeLock.request("screen");
+        else if (!cfg.keepAwake && wake) { await wake.release(); wake = null; } } catch (e) {}
+}
+
+/* iOS suspends sockets in the background: reconnect and refresh candles on return */
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  applyAwake();
+  if (!ws || ws.readyState !== 1) { wsTry = 0; connect(); }
+  if (Date.now() - hiddenAt > 30000) cfg.products.forEach(loadHistory);
+  dirty.strip = dirty.charts = dirty.log = dirty.trade = true; schedule();
+});
+window.addEventListener("online", () => { wsTry = 0; connect(); });
+window.addEventListener("resize", () => { dirty.charts = true; schedule(); });
+window.addEventListener("orientationchange", () => setTimeout(() => { dirty.charts = true; schedule(); }, 250));
+
+/* ---------- start ---------- */
+applyTheme(); ensureState(); buildCharts(); buildChips(); applyAwake();
+renderStrip(); renderTrade(); renderLog();
+connect(); cfg.products.forEach(loadHistory);
+setInterval(pollHeld, 2000);
+setInterval(() => { dirty.charts = true; schedule(); }, 1000);     // roll candles over on time even without trades
+window.CC = {cfg, S, marks, get trades() { return trades; }, replay, parseOrder, execute, describe, computeSignals, updateState,
+             pressureOf, moneyS, priceFmt, sparkline, onTicker, runOrder, addCandle, newState, paint, showTab};
+</script>
+</body>
+</html>
